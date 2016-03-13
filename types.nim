@@ -51,7 +51,8 @@ type
   NotImplementedError* = object of Exception
 
 var
-  CONNECTION_QUEUE_SIZE* = 2
+  CONNECTION_QUEUE_SIZE* = 8
+  TICK* = 10
   QUEUES*: CritBitTree[Queue[Packet]]
 
 const

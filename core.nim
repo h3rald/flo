@@ -85,7 +85,7 @@ proc run(p: Process) =
       of STOPPED:
         break
     #echo "$1: $2" % [$p, $p.status]
-    sleep(50)
+    sleep(TICK)
 
 proc start(n: Network) =
   var 
