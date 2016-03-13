@@ -3,17 +3,19 @@ import
   strutils,
   os,
   queues,
-  critbits
+  critbits,
+  json
 
-proc canRun(p: Process): bool {.discardable.}=
-  return p.component.ready(p)
+proc ready(p: Process): bool {.discardable.}=
+  return p.component.readyProc(p)
 
-proc addStandardPorts(c: var Component) =
+proc stdports*(c: Component): Component {.discardable.} =
   c.inport(P_IN)
   c.outport(P_OUT)
   c.outport(P_ERR)
+  return c
 
-proc available(p: Port): bool =
+proc available*(p: Port): bool =
   discard p.requireOutPort().requireAttachedPort()
   return QUEUES[p.connection.id].len < p.connection.size
 
@@ -51,15 +53,12 @@ proc claimFirst*(p: Process, port: string, receivable: proc(pkt: Packet): bool =
           return p.unlock(port)
   return false
 
-proc enqueue(c: Connection, packet: Packet) =
-  QUEUES[c.id].enqueue packet
-
-proc dequeue(c: Connection): Packet =
-  return QUEUES[c.id].dequeue()
-
 proc send*(outport: Port, packet: Packet) =
   discard outport.requireOutPort().requireAttachedPort()
   outport.connection.enqueue(packet)
+
+proc send*(outport: Port, contents: JsonNode) =
+  outport.send(@contents)
 
 proc receive*(inport: Port): Packet = 
   discard inport.requireInPort().requireAttachedPort()
@@ -68,26 +67,30 @@ proc receive*(inport: Port): Packet =
 proc run(p: Process) =
   while true:
     case p.status:
-      of INITIALIZED, WAITING:
-        if p.canRun():
+      of INITIALIZED:
+        if p.ready():
           p.status = READY
+        else: 
+          p.status = IDLE
       of READY:
         p.status = ACTIVE
-        discard p.component.execute(p)
+        p.component.executeProc(p)
       of ACTIVE:
-        if p.canRun():
+        if p.ready():
           p.status = READY
         else:
-          p.status = WAITING
-      of IDLE: # NOT MANAGED FOR NOW
-        if not p.component.execute(p):
+          p.status = IDLE
+      of IDLE: 
+        if p.ready():
+          p.status = READY
+        if not p.persistent:
           p.status = STOPPED
       of STOPPED:
         break
     #echo "$1: $2" % [$p, $p.status]
     sleep(TICK)
 
-proc start(n: Network) =
+proc start*(n: Network) =
   var 
     threads = newSeq[Thread[Process]](n.graph.processes.len)
     count = 0
@@ -99,32 +102,30 @@ proc start(n: Network) =
 
 when isMainModule:
   import
-    times,
-    json
+    times
 
   var c = component("Consumer")
-  c.addStandardPorts()
-  c.ready = proc(p: Process): bool =
-    return p.claimFirst(P_IN)
-  c.execute = proc(p: Process): bool =
-    echo p[P_IN].receive()
-    return true
+    .stdports()
+    .ready do (p: Process) -> bool:
+      return p.claimFirst(P_IN)
+    .execute do (p: Process):
+      echo p[P_IN].receive()
 
   var p = component("Provider")
-  p.addStandardPorts()
-  p.ready = proc(p: Process): bool =
-    return p[P_OUT].available()
-  p.execute = proc(p: Process): bool =
-    p[P_OUT].send(@(%(cpuTime())))
-    return true
+    .stdports()
+    .ready do (p: Process) -> bool:
+      return p[P_OUT].available()
+    .execute do (p: Process):
+      p[P_OUT].send(%(cpuTime()))
   
-  var cons = process("CONS", c) 
+  var cons = process("CONS", c, true) 
   var prov = process("PROV", p)
 
   var graph = graph()
   graph.add(cons)
   graph.add(prov)
   graph.add(prov[P_OUT] -> cons[P_IN])
+  #graph.add(%"TEST" -> cons[P_IN])
 
   echo graph
 
