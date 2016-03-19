@@ -1,9 +1,7 @@
 import 
-  strutils,
   json,
   critbits,
-  queues,
-  oids
+  queues
 
 type
   PortDirection* = enum IN, OUT
@@ -17,21 +15,22 @@ type
     contents*: JsonNode
     owner*: Process 
   Port* = ref object 
-    name: string
-    component: Component
-    direction: PortDirection
+    name*: string
+    component*: Component
+    direction*: PortDirection
     process*: Process
     connection*: Connection
     lock*: Process
   Component* = ref object
     name*: string
-    ports: CritBitTree[Port]
+    ports*: CritBitTree[Port]
     readyProc*: proc(p: Process): bool
+    initProcs*: seq[proc(p: Process)]
     executeProc*: proc(p: Process)
   Process* = ref object
     name*: string
     component*: Component
-    ports: CritBitTree[Port]
+    ports*: CritBitTree[Port]
     status*: ProcessStatus
     persistent*: bool
   Connection* = ref object
@@ -45,9 +44,9 @@ type
     connections*: seq[Connection]
   Network* = ref object
     graph*: Graph
-  PortAlreadyAttachedError = object of Exception
-  PortNotAttachedError = object of Exception
-  InvalidPortError = object of Exception
+  PortAlreadyAttachedError* = object of Exception
+  PortNotAttachedError* = object of Exception
+  InvalidPortError* = object of Exception
   NotImplementedError* = object of Exception
 
 var
@@ -55,186 +54,15 @@ var
   TICK* = 10
   QUEUES*: CritBitTree[Queue[Packet]]
   COMPONENTS*: CritBitTree[Component]
+  NS* = "flo"
 
 const
   P_IN* = "IN"
   P_OUT* = "OUT"
   P_ERR* = "ERR"
+  P_WAIT* = "WAIT"
 
 let
   anyPacket* = proc(pkt: Packet): bool =
     return true
-
-## String Representations
-
-proc `$`*(port: Port): string =
-  return port.name
-
-proc `$`*(p: Packet): string =
-  return $p.contents
-
-proc `$`*(comp: Component): string =
-  return comp.name 
-
-proc `$`*(process: Process): string =
-  return "$1($2)" % [process.name, process.component.name]
-
-proc `$`*(conn: Connection): string =
-  var src: string
-  if not conn.packet.isNil:
-    src = "PKT($1)" % $conn.packet
-  else:
-    src = "$1 $2" % [$conn.source.process, $conn.source.name]
-  return "$1: $2 -> $3 $4" % [$conn.id, src, $conn.target.name, $conn.target.process]
-
-proc `$`*(graph: Graph): string =
-  result = "Processes:\n"
-  for p in graph.processes.values:
-    result &= " - " & $p & "\n"
-  result &= "Connections:\n"
-  for c in graph.connections:
-    result &= " - " & $c & "\n"
-
-## Constructors & Utility Methods
-
-proc isAttached*(port: Port): bool =
-  ## Returns true if port is attached.
-  return not port.connection.isNil
-
-proc isIn*(port: Port): bool =
-  ## Returns true if port is an InPort.
-  return port.direction == IN
-
-proc isOut*(port: Port): bool =
-  ## Returns true if port is an OutPort.
-  return port.direction == OUT
-
-proc requireOutPort*(outport: Port): Port =
-  if outport.isIn:
-    raise newException(InvalidPortError, "Port $1.$2 is not an OutPort" % [outport.component.name, outport.name]) 
-  return outport
-
-proc requireInPort*(inport: Port): Port =
-  if inport.isOut:
-    raise newException(InvalidPortError, "Port $1.$2 is not an InPort" % [inport.component.name, inport.name]) 
-  return inport
-
-proc requireAttachedPort*(port: Port): Port =
-  if not port.isAttached:
-    raise newException(PortNotAttachedError, "Port $1.$2 is not attached" % [port.component.name, port.name]) 
-  return port
-
-proc requireUnattachedPort*(port: Port): Port =
-  if port.isAttached:
-    raise newException(PortAlreadyAttachedError, "Port $1.$2 is already attached" % [port.component.name, port.name]) 
-  return port
-
-proc `@`*(contents: JsonNode, owner: Process = nil): Packet =
-  ## Creates a new Packet.
-  return Packet(contents: contents, owner: owner)
-
-proc inport*(comp: Component, name: string): Component {.discardable.} =
-  ## Adds a new InPort to an existing Component.
-  comp.ports[name] = Port(name: name, component: comp, direction: IN)
-  return comp
-
-proc outport*(comp: Component, name: string): Component {.discardable.} =
-  ## Adds a new OutPort to an existing Component.
-  comp.ports[name] = Port(name: name, component: comp, direction: OUT)
-  return comp
-
-proc component*(name: string): Component =
-  ## Creates a new Component.
-  return Component(name: name)
-
-proc ready*(c: Component, fun: proc(p: Process): bool): Component {.discardable.} =
-  c.readyProc = fun
-  return c 
-
-proc execute*(c: Component, fun: proc(p: Process)): Component {.discardable.} =
-  c.executeProc = fun
-  return c 
-
-proc define*(name: string): Component {.discardable.} =
-  result = component(name)
-  COMPONENTS[name] = result
-
-proc `@`*(name: string): Component =
-  return COMPONENTS[name]
-
-proc process*(name: string, comp: Component, persistent = false): Process =
-  ## Creates a new Process.
-  result = Process(name: name, component: comp, status: INITIALIZED, persistent: persistent)
-  for p in comp.ports.values:
-    result.ports[p.name] = Port(name: p.name, component: p.component, direction: p.direction, process: result)
-
-proc `[]`*(comp: Component, name: string): Port =
-  ## Retrieves a Component Port by name.
-  return comp.ports[name]
-
-proc `[]`*(process: Process, name: string): Port =
-  ## Retrieves a Process Port by name.
-  return process.ports[name]
-
-proc enqueue*(c: Connection, packet: Packet) =
-  QUEUES[c.id].enqueue packet
-
-proc dequeue*(c: Connection): Packet =
-  return QUEUES[c.id].dequeue()
-
-proc `->`*(outport: Port, inport: Port): Connection =
-  ## Creates a new Connection.
-  discard outport.requireOutPort().requireUnattachedPort()
-  discard inport.requireInPort().requireUnattachedPort()
-  result = Connection(size: CONNECTION_QUEUE_SIZE, source: outport, target: inport, id: $genOid())
-  QUEUES[result.id] = initQueue[Packet](CONNECTION_QUEUE_SIZE)
-  inport.connection = result
-  outport.connection = result
-
-proc `->`*(pkt: Packet, inport: Port): Connection =
-  discard inport.requireInPort().requireUnattachedPort()
-  result = Connection(size: CONNECTION_QUEUE_SIZE, packet: pkt, target: inport, id: $genOid())
-  QUEUES[result.id] = initQueue[Packet](CONNECTION_QUEUE_SIZE)
-  result.enqueue(pkt)
-  inport.connection = result
-
-proc `->`*(contents: JsonNode, inport: Port): Connection =
-  return (@contents -> inport)
-
-proc add*(graph: var Graph, connection: Connection) =
-  ## Adds a Connection to an existing Graph.
-  graph.connections.add connection
-
-proc add*(graph: var Graph, process: Process) =
-  ## Adds a Process to an existing Graph.
-  graph.processes[process.name] = process
-
-proc graph*(): Graph =
-  ## Creates a new Graph.
-  return Graph(connections: newSeq[Connection](0))
-
-proc network*(graph: Graph): Network=
-  ## Creates a new Network.
-  result = Network(graph: graph)
-
-
-when isMainModule:
-  var c1 = component "Component1"
-  var c2 = component "Component2"
-  c1.inport("IN-1")
-  c1.inport("IN-2")
-  c1.outport("OUT-1")
-  c1.outport("OUT-2")
-  c2.inport("II-1")
-  c2.inport("II-2")
-  c2.outport("OO-1")
-  c2.outport("OO-2")
-  var p1 = process("P1", c1)
-  var p2 = process("P2", c2)
-  var g = graph()
-  g.add p1
-  g.add p2
-  g.add(p1["OUT-2"] -> p2["II-1"])
-  g.add(p1["OUT-1"] -> p2["II-2"])
-  echo g
 

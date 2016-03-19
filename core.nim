@@ -1,19 +1,162 @@
 import
   types,
   strutils,
+  oids,
   os,
   queues,
   critbits,
   json
 
+## String Representations
+
+proc `$`*(port: Port): string =
+  return port.name
+
+proc `$`*(p: Packet): string =
+  return $p.contents
+
+proc `$`*(comp: Component): string =
+  return comp.name 
+
+proc `$`*(process: Process): string =
+  return "$1($2)" % [process.name, process.component.name]
+
+proc `$`*(conn: Connection): string =
+  var src: string
+  if not conn.packet.isNil:
+    src = "PKT($1)" % $conn.packet
+  else:
+    src = "$1 $2" % [$conn.source.process, $conn.source.name]
+  return "$1: $2 -> $3 $4" % [$conn.id, src, $conn.target.name, $conn.target.process]
+
+proc `$`*(graph: Graph): string =
+  result = "Processes:\n"
+  for p in graph.processes.values:
+    result &= " - " & $p & "\n"
+  result &= "Connections:\n"
+  for c in graph.connections:
+    result &= " - " & $c & "\n"
+
+## Constructors & Utility Methods
+
+proc isAttached*(port: Port): bool =
+  ## Returns true if port is attached.
+  return not port.connection.isNil
+
+proc isIn*(port: Port): bool =
+  ## Returns true if port is an InPort.
+  return port.direction == IN
+
+proc isOut*(port: Port): bool =
+  ## Returns true if port is an OutPort.
+  return port.direction == OUT
+
+proc requireOutPort*(outport: Port): Port =
+  if outport.isIn:
+    raise newException(InvalidPortError, "Port $1.$2 is not an OutPort" % [outport.component.name, outport.name]) 
+  return outport
+
+proc requireInPort*(inport: Port): Port =
+  if inport.isOut:
+    raise newException(InvalidPortError, "Port $1.$2 is not an InPort" % [inport.component.name, inport.name]) 
+  return inport
+
+proc requireAttachedPort*(port: Port): Port =
+  if not port.isAttached:
+    raise newException(PortNotAttachedError, "Port $1.$2 is not attached" % [port.component.name, port.name]) 
+  return port
+
+proc requireUnattachedPort*(port: Port): Port =
+  if port.isAttached:
+    raise newException(PortAlreadyAttachedError, "Port $1.$2 is already attached" % [port.component.name, port.name]) 
+  return port
+
+proc `@`*(contents: JsonNode, owner: Process = nil): Packet =
+  ## Creates a new Packet.
+  return Packet(contents: contents, owner: owner)
+
+proc inport*(comp: Component, name: string): Component {.discardable.} =
+  ## Adds a new InPort to an existing Component.
+  comp.ports[name] = Port(name: name, component: comp, direction: IN)
+  return comp
+
+proc outport*(comp: Component, name: string): Component {.discardable.} =
+  ## Adds a new OutPort to an existing Component.
+  comp.ports[name] = Port(name: name, component: comp, direction: OUT)
+  return comp
+
+proc execute*(c: Component, fun: proc(p: Process)): Component {.discardable.} =
+  c.executeProc = fun
+  return c 
+
+proc init*(c: Component, fun: proc(p: Process)): Component {.discardable.} =
+  c.initProcs.add fun
+  return c 
+
+proc ready*(c: Component, fun: proc(p: Process): bool): Component {.discardable.} =
+  c.readyProc = fun
+  return c 
+
+proc `@`*(name: string): Component =
+  return COMPONENTS[name]
+
+proc process*(name: string, comp: Component): Process =
+  ## Creates a new Process.
+  result = Process(name: name, component: comp, status: INITIALIZED, persistent: false)
+  for p in comp.ports.values:
+    result.ports[p.name] = Port(name: p.name, component: p.component, direction: p.direction, process: result)
+
+proc `[]`*(comp: Component, name: string): Port =
+  ## Retrieves a Component Port by name.
+  return comp.ports[name]
+
+proc `[]`*(process: Process, name: string): Port =
+  ## Retrieves a Process Port by name.
+  return process.ports[name]
+
+proc enqueue*(c: Connection, packet: Packet) =
+  QUEUES[c.id].enqueue packet
+
+proc dequeue*(c: Connection): Packet =
+  return QUEUES[c.id].dequeue()
+
+proc `->`*(outport: Port, inport: Port): Connection =
+  ## Creates a new Connection.
+  discard outport.requireOutPort().requireUnattachedPort()
+  discard inport.requireInPort().requireUnattachedPort()
+  result = Connection(size: CONNECTION_QUEUE_SIZE, source: outport, target: inport, id: $genOid())
+  QUEUES[result.id] = initQueue[Packet](CONNECTION_QUEUE_SIZE)
+  inport.connection = result
+  outport.connection = result
+
+proc `->`*(pkt: Packet, inport: Port): Connection =
+  discard inport.requireInPort().requireUnattachedPort()
+  result = Connection(size: CONNECTION_QUEUE_SIZE, packet: pkt, target: inport, id: $genOid())
+  QUEUES[result.id] = initQueue[Packet](CONNECTION_QUEUE_SIZE)
+  result.enqueue(pkt)
+  inport.connection = result
+
+proc `->`*(contents: JsonNode, inport: Port): Connection =
+  return (@contents -> inport)
+
+proc add*(graph: var Graph, connection: Connection) =
+  ## Adds a Connection to an existing Graph.
+  graph.connections.add connection
+
+proc add*(graph: var Graph, process: Process) =
+  ## Adds a Process to an existing Graph.
+  graph.processes[process.name] = process
+
+proc graph*(): Graph =
+  ## Creates a new Graph.
+  return Graph(connections: newSeq[Connection](0))
+
+proc network*(graph: Graph): Network=
+  ## Creates a new Network.
+  result = Network(graph: graph)
+
 proc ready(p: Process): bool {.discardable.}=
   return p.component.readyProc(p)
-
-proc stdports*(c: Component): Component {.discardable.} =
-  c.inport(P_IN)
-  c.outport(P_OUT)
-  c.outport(P_ERR)
-  return c
 
 proc available*(p: Port): bool =
   discard p.requireOutPort().requireAttachedPort()
@@ -60,11 +203,39 @@ proc send*(outport: Port, packet: Packet) =
 proc send*(outport: Port, contents: JsonNode) =
   outport.send(@contents)
 
-proc receive*(inport: Port): Packet = 
+proc receive*(inport: Port): Packet {.discardable.}= 
   discard inport.requireInPort().requireAttachedPort()
   return inport.connection.dequeue()
 
+proc component*(name: string): Component =
+  ## Creates a new Component.
+  result = Component(name: name, initProcs: newSeq[proc(p: Process)](0))
+  result.inport(P_IN)
+  result.inport(P_WAIT)
+  result.outport(P_OUT)
+  result.outport(P_ERR)
+  result.init do (p:Process):
+    if p.persistent:
+      return
+    if p[P_WAIT].isAttached:
+      if p.claimFirst(P_WAIT):
+        p[P_WAIT].receive()
+        p.persistent = true
+      else:
+        p.persistent = false
+
+template namespace*(name: string, stmt: stmt) =
+  NS = name
+  stmt
+
+proc define*(name: string): Component {.discardable.} =
+  var fullname = NS & "." & name
+  result = component(fullname)
+  COMPONENTS[fullname] = result
+
 proc run(p: Process) =
+  for pr in p.component.initProcs:
+    pr(p)
   while true:
     case p.status:
       of INITIALIZED:
@@ -85,7 +256,7 @@ proc run(p: Process) =
           p.status = READY
         if not p.persistent:
           p.status = STOPPED
-      of STOPPED:
+      else:
         break
     #echo "$1: $2" % [$p, $p.status]
     sleep(TICK)
@@ -105,29 +276,27 @@ when isMainModule:
     times
 
   var c = component("Consumer")
-    .stdports()
     .ready do (p: Process) -> bool:
       return p.claimFirst(P_IN)
     .execute do (p: Process):
       echo p[P_IN].receive()
 
   var p = component("Provider")
-    .stdports()
     .ready do (p: Process) -> bool:
       return p[P_OUT].available()
     .execute do (p: Process):
       p[P_OUT].send(%(cpuTime()))
   
-  var cons = process("CONS", c, true) 
+  var cons = process("CONS", c) 
   var prov = process("PROV", p)
 
-  var graph = graph()
-  graph.add(cons)
-  graph.add(prov)
-  graph.add(prov[P_OUT] -> cons[P_IN])
-  #graph.add(%"TEST" -> cons[P_IN])
+  var g = graph()
+  g.add(cons)
+  g.add(prov)
+  g.add(prov[P_OUT] -> cons[P_IN])
+  #g.add(%"TEST" -> cons[P_WAIT])
 
-  echo graph
+  echo g
 
-  network(graph).start()
+  network(g).start()
 
