@@ -12,11 +12,13 @@ type
     IDLE,
     STOPPED
   LogLevel* = enum
-    NONE,
-    ERROR,
-    WARNING,
-    INFO,
-    DEBUG
+    lvDebug
+    lvInfo
+    lvWarn
+    lvError
+    lvNone
+  Logger* = object
+    level*: LogLevel
   ProcessOptions* = object
     listen*: bool
     logLevel*: LogLevel
@@ -64,12 +66,16 @@ var
   QUEUES*: CritBitTree[Queue[Packet]]
   COMPONENTS*: CritBitTree[Component]
   NS* = "flo"
+  LOG*: Logger
+
+LOG.level = lvWarn
 
 const
   P_IN* = "IN"
   P_OUT* = "OUT"
   P_ERR* = "ERR"
   P_OPT* = "OPT"
+  P_LOG* = "LOG"
 
 let
   anyPacket* = proc(pkt: Packet): bool =

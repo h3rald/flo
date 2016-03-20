@@ -5,7 +5,8 @@ import
   os,
   queues,
   critbits,
-  json
+  json,
+  logger
 
 ## String Representations
 
@@ -102,7 +103,7 @@ proc `@`*(name: string): Component =
 
 proc process*(name: string, comp: Component): Process =
   ## Creates a new Process.
-  result = Process(name: name, component: comp, status: INITIALIZED, options: ProcessOptions(listen: false, logLevel: LogLevel(2)))
+  result = Process(name: name, component: comp, status: INITIALIZED, options: ProcessOptions(listen: false, logLevel: lvWarn))
   for p in comp.ports.values:
     result.ports[p.name] = Port(name: p.name, component: p.component, direction: p.direction, process: result)
 
@@ -207,6 +208,11 @@ proc receive*(inport: Port): Packet {.discardable.}=
   discard inport.requireInPort().requireAttachedPort()
   return inport.connection.dequeue()
 
+proc log*(p: Process, lvl: LogLevel, msg: string) =
+  LOG.log(lvl, msg)
+  if p.options.logLevel <= lvl:
+    p[P_LOG].send(%msg)
+
 proc initOpts(p:Process) =
   if p.options.listen:
     return
@@ -229,6 +235,7 @@ proc component*(name: string): Component =
   result.inport(P_OPT)
   result.outport(P_OUT)
   result.outport(P_ERR)
+  result.outport(P_LOG)
   result.init(initOpts)
 
 template namespace*(name: string, stmt: stmt) =
@@ -265,7 +272,7 @@ proc run(p: Process) =
           p.status = STOPPED
       else:
         break
-    #echo "$1: $2" % [$p, $p.status]
+    LOG.debug("$1: $2" % [$p, $p.status])
     sleep(TICK)
 
 proc start*(n: Network) =
@@ -301,7 +308,6 @@ when isMainModule:
   g.add(cons)
   g.add(prov)
   g.add(prov[P_OUT] -> cons[P_IN])
-  #g.add(%"TEST" -> cons[P_WAIT])
 
   echo g
 
