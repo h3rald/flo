@@ -335,9 +335,17 @@ macro copyNimProc*(name: expr, sendpkt: bool, portdata: varargs[expr]): stmt =
     ports[j] = ".inport(\"$1\")" % [$portdata[j*3]]
   if sendpkt.boolVal:
     exec = """if p["OUT"].isAttached:
-        p["OUT"].send(%($name($args)))""" % ["name", $name, "args", args.join(", ")]
+        try: 
+          p["OUT"].send(%($name($args)))
+        except:
+          if p["ERR"].isAttached:
+            p["ERR"].send(%getCurrentExceptionMsg())""" % ["name", $name, "args", args.join(", ")]
   else:
-    exec = """$name($args)""" % ["name", $name, "args", args.join(", ")]
+    exec = """try:
+        $name($args)
+      except:
+        if p["ERR"].isAttached:
+          p["ERR"].send(%getCurrentExceptionMsg())""" % ["name", $name, "args", args.join(", ")]
   let code = """
   define("$name")
     $ports
@@ -346,7 +354,37 @@ macro copyNimProc*(name: expr, sendpkt: bool, portdata: varargs[expr]): stmt =
     .execute do (p: Process):
       $exec
   """ % ["name", $name, "claims", claims.join(" and "), "ports", ports.join(""), "exec", exec]
-  echo "COMPONENT '$1':" % [$name]
+  echo "COMPONENT $1:" % [$name]
+  echo code
+  return parseStmt(code)
+
+macro copyNimIterator*(name: expr, portdata: varargs[expr]): stmt =
+  var limit = (portdata.len/2).int
+  var args = newSeq[string](limit)
+  var claims = newSeq[string](limit)
+  var ports = newSeq[string](limit)
+  var exec:string
+  var getMethod: string
+  for j in 0 .. limit-1:
+    claims[j] = "p.claimByType(\"$1\", $2)" % [$portdata[j*2], $portdata[j*2+1]]
+    args[j] = "p[\"$1\"].receive().contents.$2" % [$portdata[j*2], kind2getter($portdata[j*2+1])]
+    ports[j] = ".inport(\"$1\")" % [$portdata[j*3]]
+    exec = """if p["OUT"].isAttached:
+        try:
+          for item in $name($args):
+            p["OUT"].send(%item)
+        except:
+          if p["ERR"].isAttached:
+            p["ERR"].send(%getCurrentExceptionMsg())""" % ["name", $name, "args", args.join(", ")]
+  let code = """
+  define("$name")
+    $ports
+    .ready do (p: Process) -> bool:
+      return $claims
+    .execute do (p: Process):
+      $exec
+  """ % ["name", $name, "claims", claims.join(" and "), "ports", ports.join(""), "exec", exec]
+  echo "COMPONENT $1:" % [$name]
   echo code
   return parseStmt(code)
 

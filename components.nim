@@ -49,6 +49,9 @@ namespace "os":
   copyNimProc createDir,    false,  "IN",   JString 
   copyNimProc copyDir,      false,  "SRC",  JString, "DEST",  JString 
 
+  copyNimIterator walkFiles,        "IN",   JString
+  copyNimIterator walkDirRec,       "IN",   JString
+
 when isMainModule:
   var data = """
 {
