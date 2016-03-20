@@ -36,18 +36,18 @@ namespace "sys":
 
 namespace "os":
 
-  copyNimProc(fileExists,   true,   "IN",   JString)
-  copyNimProc(dirExists,    true,   "IN",   JString) 
-  copyNimProc(copyFile,     false,  "SRC",  JString, "DEST",  JString)
-  copyNimProc(moveFile,     false,  "SRC",  JString, "DEST",  JString)
-  copyNimProc(removeFile,   false,  "IN",   JString)
-  copyNimProc(execShellCmd, true,   "IN",   JString)
-  copyNimProc(getEnv,       true,   "IN",   JString)
-  copyNimProc(existsEnv,    true,   "IN",   JString)
-  copyNimProc(putEnv,       false,  "KEY",  JString, "VALUE", JString)
-  copyNimProc(removeDir,    false,  "IN",   JString)
-  copyNimProc(createDir,    false,  "IN",   JString)
-  copyNimProc(copyDir,      false,  "SRC",  JString, "DEST",  JString)
+  copyNimProc fileExists,   true,   "IN",   JString 
+  copyNimProc dirExists,    true,   "IN",   JString  
+  copyNimProc copyFile,     false,  "SRC",  JString, "DEST",  JString 
+  copyNimProc moveFile,     false,  "SRC",  JString, "DEST",  JString 
+  copyNimProc removeFile,   false,  "IN",   JString 
+  copyNimProc execShellCmd, true,   "IN",   JString 
+  copyNimProc getEnv,       true,   "IN",   JString 
+  copyNimProc existsEnv,    true,   "IN",   JString 
+  copyNimProc putEnv,       false,  "KEY",  JString, "VALUE", JString 
+  copyNimProc removeDir,    false,  "IN",   JString 
+  copyNimProc createDir,    false,  "IN",   JString 
+  copyNimProc copyDir,      false,  "SRC",  JString, "DEST",  JString 
 
 when isMainModule:
   var data = """
