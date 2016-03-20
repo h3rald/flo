@@ -10,15 +10,12 @@ import
   core,
   logger,
   dsl,
+  config,
   components
 
 
-const
-  program = "flo"
-  version = "1.0.0"
-
 let
-  help = """$1 v$2 - A simple flow-based programming (FBP) engine - (c) 2016 Fabio Cevasco
+  help = """flo v$2 - A simple flow-based programming (FBP) engine - (c) 2016 Fabio Cevasco
 
   Usage:
     flo command <argument> [option1, option2, ...]
@@ -31,39 +28,39 @@ let
   Options:
     -h, --help            Display this message.
     -l, --log             Specify the log level: debug, info, warn, error, none (default: warn)
-    -v, --version         Display the program version.""" % [program, version]
+    -v, --version         Display the program version.""" % [VERSION]
 
 proc loadFile(file: string): Graph =
   var contents: string
   try:
     contents = file.readFile
   except:
-    LOG.error("Unable to read file: $1" % [file])
-    quit(10)
+    stderr.writeLine("Unable to read file: $1" % [file])
+    quit(20)
   try:
     result = contents.toGraph()
   except:
-    LOG.error(getCurrentExceptionMsg())
-    quit(11)
+    stderr.writeLine(getCurrentExceptionMsg())
+    quit(21)
 
 proc runGraph(file: string) = 
   try:
     loadFile(file).network.start()
   except:
-    LOG.error(getCurrentExceptionMsg())
-    quit(20)
+    stderr.writeLine(getCurrentExceptionMsg())
+    quit(30)
 
 proc infoGraph(file: string) = 
   try:
     echo $loadFile(file)
   except:
-    LOG.error(getCurrentExceptionMsg())
-    quit(30)
+    stderr.writeLine(getCurrentExceptionMsg())
+    quit(40)
 
 proc describeComponent(name: string) = 
   if not COMPONENTS.hasKey(name):
-    LOG.error("Component '$1' not found" % [name])
-    quit(40)
+    stderr.writeLine("Component '$1' not found" % [name])
+    quit(50)
   let component = COMPONENTS[name]
   echo "Component: ", name
   echo "InPorts:"
@@ -87,8 +84,8 @@ for kind, key, val in getopt():
           of "describe":
             OPTIONS.command = "describe"
           else:
-            LOG.error("Invalid command: $1" % [key]) 
-            quit(1)
+            stderr.writeLine("Invalid command: $1" % [key]) 
+            quit(10)
       else:
         case OPTIONS.command:
           of "run":
@@ -105,7 +102,7 @@ for kind, key, val in getopt():
     of cmdLongOption, cmdShortOption:
       case key:
         of "version", "v":
-          echo version
+          echo VERSION
           quit(0)
         of "help", "h":
           echo help
@@ -132,12 +129,12 @@ for kind, key, val in getopt():
 case OPTIONS.command:
   of "run":
     if OPTIONS.arguments.len == 0:
-      LOG.error("No file specified")
+      stderr.writeLine("No file specified")
       quit(100)
     runGraph(OPTIONS.arguments[0])
   of "info":
     if OPTIONS.arguments.len == 0:
-      LOG.error("No file specified")
+      stderr.writeLine("No file specified")
       quit(101)
     infoGraph(OPTIONS.arguments[0])
   of "describe":
