@@ -332,7 +332,7 @@ macro copyNimProc*(name: expr, sendpkt: bool, portdata: varargs[expr]): stmt =
   for j in 0 .. limit-1:
     claims[j] = "p.claimByType(\"$1\", $2)" % [$portdata[j*2], $portdata[j*2+1]]
     args[j] = "p[\"$1\"].receive().contents.$2" % [$portdata[j*2], kind2getter($portdata[j*2+1])]
-    ports[j] = ".inport(\"$1\")" % [$portdata[j*3]]
+    ports[j] = ".inport(\"$1\")" % [$portdata[j*2]]
   if sendpkt.boolVal:
     exec = """if p["OUT"].isAttached:
         try: 
