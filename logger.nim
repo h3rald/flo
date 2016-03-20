@@ -11,38 +11,27 @@ proc currentTime*(plain = false): string =
   else:
     return getTime().getGMTime().format("yyyy-MM-dd'T'hh:mm:ss'Z'")
 
-proc msg(logger: Logger, kind, message: string, params: varargs[string, `$`]) =
-  let s = format(message, params)
-  if kind == "WARNING":
-    stderr.writeLine(currentTime(true) & " " & kind & ": " & s)
+proc logString(kind: LogLevel,  message: string, params: varargs[string, `$`]): string =
+  return currentTime(true) & " " & format(message, params)
+
+proc msg(logger: Logger, kind: LogLevel, message: string, params: varargs[string, `$`]) =
+  if kind >= lvWarn:
+    stderr.writeLine(logString(kind, message, params))
   else:
-    echo currentTime(true), " ", kind, ": ", s
+    echo logString(kind, message, params)
 
 proc error*(logger: Logger, message: string, params: varargs[string, `$`]) = 
   if logger.level <= lvError:
-    logger.msg("  ERROR", message, params)
+    logger.msg(lvError, "  ERROR: " & message, params)
 
 proc warn*(logger: Logger, message: string, params: varargs[string, `$`]) = 
   if logger.level <= lvWarn:
-    logger.msg("WARNING", message, params)
+    logger.msg(lvWarn, "WARNING: " & message, params)
 
 proc info*(logger: Logger, message: string, params: varargs[string, `$`]) = 
   if logger.level <= lvInfo:
-    logger.msg("   INFO", message, params)
+    logger.msg(lvInfo, "   INFO: " & message, params)
 
 proc debug*(logger: Logger, message: string, params: varargs[string, `$`]) = 
   if logger.level <= lvDebug:
-    logger.msg("  DEBUG", message, params)
-
-proc log*(logger: Logger, lvl: LogLevel, message: string, params: varargs[string, `$`]) =
-  case lvl:
-    of lvError:
-      logger.error(message, params)
-    of lvWarn:
-      logger.warn(message, params)
-    of lvInfo:
-      logger.info(message, params)
-    of lvDebug:
-      logger.debug(message, params)
-    else:
-      discard
+    logger.msg(lvDebug, "  DEBUG: " & message, params)

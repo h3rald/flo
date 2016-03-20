@@ -1,13 +1,11 @@
 import
+  os,
+  json,
   types,
   core, 
-  os,
-  json
+  dsl
 
-
-
-
-namespace "os":
+namespace "sys":
 
   define("writer")
     .ready do (p: Process) -> bool:
@@ -34,21 +32,47 @@ namespace "os":
         p[P_OUT].send(%s)
 
 when isMainModule:
-  var w = @"os.writer"
-  var r = @"os.reader"
-  
-  var pW = process("W1", w)
-  var pR = process("R1", r)
+  var data = """
+{
+  "processes": {
+    "W1": {
+      "component": "sys.writer"  
+    },
+    "R1": {
+      "component": "sys.reader"  
+    }
+  },  
+  "connections": [
+    {
+      "src": {
+        "process": "R1",
+        "port": "OUT"
+      },
+      "tgt": {
+        "process": "W1",
+        "port": "IN"
+      }
+    },
+    {
+      "data": {"listen": true},
+      "tgt": {
+        "process": "R1",
+        "port": "OPT"
+      }
+    },
+    {
+      "data": {"listen": true},
+      "tgt": {
+        "process": "W1",
+        "port": "OPT"
+      }
+    }
+  ]
+}
 
-  var g = graph()
-  g.add(pW)
-  g.add(pR)
-  g.add(pR[P_OUT] -> pW[P_IN]) 
-  g.add(%[(key:"listen", val: %true)] -> pR[P_OPT]) 
-  g.add(%[(key:"listen", val: %true)] -> pW[P_OPT]) 
-  
+  """
+  var g = data.toGraph 
   echo g
-
   g.network.start()
 
   

@@ -208,10 +208,25 @@ proc receive*(inport: Port): Packet {.discardable.}=
   discard inport.requireInPort().requireAttachedPort()
   return inport.connection.dequeue()
 
-proc log*(p: Process, lvl: LogLevel, msg: string) =
-  LOG.log(lvl, msg)
-  if p.options.logLevel <= lvl:
-    p[P_LOG].send(%msg)
+proc error*(p: Process, message: string, params: varargs[string, `$`]) = 
+  LOG.error(message, params)
+  if p.options.logLevel <= lvError:
+    p[P_LOG].send(%("  ERROR: " & message & params.join(" ")))
+
+proc warn*(p: Process, message: string, params: varargs[string, `$`]) = 
+  LOG.warn(message, params)
+  if p.options.logLevel <= lvWarn:
+    p[P_LOG].send(%("WARNING: " & message & params.join(" ")))
+
+proc info*(p: Process, message: string, params: varargs[string, `$`]) = 
+  LOG.info(message, params)
+  if p.options.logLevel <= lvInfo:
+    p[P_LOG].send(%("   INFO: " & message & params.join(" ")))
+
+proc debug*(p: Process, message: string, params: varargs[string, `$`]) = 
+  LOG.debug(message, params)
+  if p.options.logLevel <= lvDebug:
+    p[P_LOG].send(%("  DEBUG: " & message & params.join(" ")))
 
 proc initOpts(p:Process) =
   if p.options.listen:

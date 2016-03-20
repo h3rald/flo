@@ -59,6 +59,9 @@ type
   PortNotAttachedError* = object of Exception
   InvalidPortError* = object of Exception
   NotImplementedError* = object of Exception
+  NoConnectionsError* = object of Exception
+  NoProcessesError* = object of Exception
+  InvalidDataError* = object of Exception
 
 var
   CONNECTION_QUEUE_SIZE* = 8
