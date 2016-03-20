@@ -3,3 +3,5 @@ core
 flo
 types
 components
+dsl
+cli

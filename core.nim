@@ -1,5 +1,4 @@
 import
-  types,
   strutils,
   oids,
   os,
@@ -7,6 +6,8 @@ import
   critbits,
   json,
   logger
+import
+  types
 
 ## String Representations
 

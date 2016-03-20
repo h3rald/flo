@@ -22,6 +22,10 @@ type
   ProcessOptions* = object
     listen*: bool
     logLevel*: LogLevel
+  FloOptions* = object
+    logLevel*: LogLevel
+    command*: string
+    arguments*: seq[string]
   Packet* = ref object
     contents*: JsonNode
     owner*: Process 
@@ -70,6 +74,7 @@ var
   COMPONENTS*: CritBitTree[Component]
   NS* = "flo"
   LOG*: Logger
+  OPTIONS* = FloOptions(logLevel: lvWarn, arguments: newSeq[string](0))
 
 LOG.level = lvWarn
 
