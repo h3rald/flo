@@ -5,7 +5,8 @@ import
   queues,
   critbits,
   json,
-  logger
+  logger,
+  macros
 import
   types
 
@@ -179,11 +180,12 @@ proc unlock(p: Process, port: string): bool =
     return false
 
 proc claimPacket(p: Process, pkt: Packet): bool =
+  if pkt.owner == p:
+    return true
   if pkt.owner.isNil:
     pkt.owner = p
     return true
-  else:
-    return false
+  return false
 
 iterator packets(p: Port): Packet =
   discard p.requireInPort().requireAttachedPort()
@@ -197,6 +199,10 @@ proc claim*(p: Process, port: string, receivable: proc(pkt: Packet): bool = anyP
         if p.claimPacket(pkt):
           return p.unlock(port)
   return false
+
+proc claimByType*(p: Process, port: string, kind: JsonNodeKind): bool =
+  return claim(p, port) do (pkt: Packet) -> bool:
+    return pkt.contents.kind == kind
 
 proc send*(outport: Port, packet: Packet) =
   discard outport.requireOutPort().requireAttachedPort()
@@ -247,7 +253,6 @@ proc initOpts(p:Process) =
 proc component*(name: string): Component =
   ## Creates a new Component.
   result = Component(name: name, initProcs: newSeq[proc(p: Process)](0))
-  result.inport(P_IN)
   result.inport(P_OPT)
   result.outport(P_OUT)
   result.outport(P_ERR)
@@ -299,6 +304,51 @@ proc start*(n: Network) =
     createThread(threads[count], run, p)
     count.inc
   threads.joinThreads()
+
+proc kind2getter*(kind: string): string =
+  case kind:
+    of "JString":
+      return "getStr"
+    of "JInt":
+      return "getInt"
+    of "JFloat":
+      return "getFloat"
+    of "JArray":
+      return "getElems"
+    of "JObject":
+      return "getFields"
+    of "JBool":
+      return "getBVal"
+    else:
+      return "$"
+
+macro copyNimProc*(name: expr, sendpkt: bool, portdata: varargs[expr]): stmt =
+  var limit = (portdata.len/2).int
+  var args = newSeq[string](limit)
+  var claims = newSeq[string](limit)
+  var ports = newSeq[string](limit)
+  var exec:string
+  var getMethod: string
+  for j in 0 .. limit-1:
+    claims[j] = "p.claimByType(\"$1\", $2)" % [$portdata[j*2], $portdata[j*2+1]]
+    args[j] = "p[\"$1\"].receive().contents.$2" % [$portdata[j*2], kind2getter($portdata[j*2+1])]
+    ports[j] = ".inport(\"$1\")" % [$portdata[j*3]]
+  if sendpkt.boolVal:
+    exec = """if p["OUT"].isAttached:
+        p["OUT"].send(%($name($args)))""" % ["name", $name, "args", args.join(", ")]
+  else:
+    exec = """$name($args)""" % ["name", $name, "args", args.join(", ")]
+  let code = """
+  define("$name")
+    $ports
+    .ready do (p: Process) -> bool:
+      return $claims
+    .execute do (p: Process):
+      $exec
+  """ % ["name", $name, "claims", claims.join(" and "), "ports", ports.join(""), "exec", exec]
+  echo "COMPONENT '$1':" % [$name]
+  echo code
+  return parseStmt(code)
 
 
 when isMainModule:

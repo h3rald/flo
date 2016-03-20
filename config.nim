@@ -9,6 +9,7 @@ const
   cfgfile   = "flo.nimble".slurp
 
 var
+  VERSION*:string
   f = newStringStream(cfgfile)
 
 if f != nil:

@@ -75,7 +75,6 @@ var
   NS* = "flo"
   LOG*: Logger
   OPTIONS* = FloOptions(logLevel: lvWarn, arguments: newSeq[string](0))
-  VERSION*: string
 
 LOG.level = lvWarn
 
