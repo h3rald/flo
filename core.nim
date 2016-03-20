@@ -24,7 +24,7 @@ proc `$`*(process: Process): string =
 proc `$`*(conn: Connection): string =
   var src: string
   if not conn.packet.isNil:
-    src = "PKT($1)" % $conn.packet
+    src = "[[PKT:$1]]" % $conn.packet
   else:
     src = "$1 $2" % [$conn.source.process, $conn.source.name]
   return "$1: $2 -> $3 $4" % [$conn.id, src, $conn.target.name, $conn.target.process]
@@ -102,7 +102,7 @@ proc `@`*(name: string): Component =
 
 proc process*(name: string, comp: Component): Process =
   ## Creates a new Process.
-  result = Process(name: name, component: comp, status: INITIALIZED, persistent: false)
+  result = Process(name: name, component: comp, status: INITIALIZED, options: ProcessOptions(listen: false, logLevel: LogLevel(2)))
   for p in comp.ports.values:
     result.ports[p.name] = Port(name: p.name, component: p.component, direction: p.direction, process: result)
 
@@ -176,7 +176,7 @@ proc unlock(p: Process, port: string): bool =
   else:
     return false
 
-proc claim(p: Process, pkt: Packet): bool =
+proc claimPacket(p: Process, pkt: Packet): bool =
   if pkt.owner.isNil:
     pkt.owner = p
     return true
@@ -188,11 +188,11 @@ iterator packets(p: Port): Packet =
   for pkt in QUEUES[p.connection.id].items:
     yield pkt
 
-proc claimFirst*(p: Process, port: string, receivable: proc(pkt: Packet): bool = anyPacket): bool =
+proc claim*(p: Process, port: string, receivable: proc(pkt: Packet): bool = anyPacket): bool =
   if p.lock(port):
     for pkt in p[port].packets:
       if pkt.receivable:
-        if p.claim(pkt):
+        if p.claimPacket(pkt):
           return p.unlock(port)
   return false
 
@@ -207,22 +207,29 @@ proc receive*(inport: Port): Packet {.discardable.}=
   discard inport.requireInPort().requireAttachedPort()
   return inport.connection.dequeue()
 
+proc initOpts(p:Process) =
+  if p.options.listen:
+    return
+  if p[P_OPT].isAttached:
+    if p.claim(P_OPT):
+      var opts = p[P_OPT].receive().contents
+      for o in opts.pairs:
+        case o.key:
+          of "listen":
+            p.options.listen = o.val.getBVal
+          of "logLevel":
+            p.options.logLevel = LogLevel(o.val.getNum)
+          else:
+            discard
+
 proc component*(name: string): Component =
   ## Creates a new Component.
   result = Component(name: name, initProcs: newSeq[proc(p: Process)](0))
   result.inport(P_IN)
-  result.inport(P_WAIT)
+  result.inport(P_OPT)
   result.outport(P_OUT)
   result.outport(P_ERR)
-  result.init do (p:Process):
-    if p.persistent:
-      return
-    if p[P_WAIT].isAttached:
-      if p.claimFirst(P_WAIT):
-        p[P_WAIT].receive()
-        p.persistent = true
-      else:
-        p.persistent = false
+  result.init(initOpts)
 
 template namespace*(name: string, stmt: stmt) =
   NS = name
@@ -254,7 +261,7 @@ proc run(p: Process) =
       of IDLE: 
         if p.ready():
           p.status = READY
-        if not p.persistent:
+        if not p.options.listen:
           p.status = STOPPED
       else:
         break
@@ -277,7 +284,7 @@ when isMainModule:
 
   var c = component("Consumer")
     .ready do (p: Process) -> bool:
-      return p.claimFirst(P_IN)
+      return p.claim(P_IN)
     .execute do (p: Process):
       echo p[P_IN].receive()
 

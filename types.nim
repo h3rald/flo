@@ -11,6 +11,15 @@ type
     ACTIVE,
     IDLE,
     STOPPED
+  LogLevel* = enum
+    NONE,
+    ERROR,
+    WARNING,
+    INFO,
+    DEBUG
+  ProcessOptions* = object
+    listen*: bool
+    logLevel*: LogLevel
   Packet* = ref object
     contents*: JsonNode
     owner*: Process 
@@ -32,7 +41,7 @@ type
     component*: Component
     ports*: CritBitTree[Port]
     status*: ProcessStatus
-    persistent*: bool
+    options*: ProcessOptions
   Connection* = ref object
     id*: string
     size*: int
@@ -60,7 +69,7 @@ const
   P_IN* = "IN"
   P_OUT* = "OUT"
   P_ERR* = "ERR"
-  P_WAIT* = "WAIT"
+  P_OPT* = "OPT"
 
 let
   anyPacket* = proc(pkt: Packet): bool =
