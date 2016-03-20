@@ -8,14 +8,13 @@ import
 import
   types,
   core,
-  logger,
   dsl,
   config,
   components
 
 
 let
-  help = """flo v$2 - A simple flow-based programming (FBP) engine - (c) 2016 Fabio Cevasco
+  HELP* = """flo v$1 - A simple flow-based programming (FBP) engine - (c) 2016 Fabio Cevasco
 
   Usage:
     flo command <argument> [option1, option2, ...]
@@ -30,7 +29,7 @@ let
     -l, --log             Specify the log level: debug, info, warn, error, none (default: warn)
     -v, --version         Display the program version.""" % [VERSION]
 
-proc loadFile(file: string): Graph =
+proc loadFile*(file: string): Graph =
   var contents: string
   try:
     contents = file.readFile
@@ -43,21 +42,21 @@ proc loadFile(file: string): Graph =
     stderr.writeLine(getCurrentExceptionMsg())
     quit(21)
 
-proc runGraph(file: string) = 
+proc runGraph*(file: string) = 
   try:
     loadFile(file).network.start()
   except:
     stderr.writeLine(getCurrentExceptionMsg())
     quit(30)
 
-proc infoGraph(file: string) = 
+proc infoGraph*(file: string) = 
   try:
     echo $loadFile(file)
   except:
     stderr.writeLine(getCurrentExceptionMsg())
     quit(40)
 
-proc describeComponent(name: string) = 
+proc describeComponent*(name: string) = 
   if not COMPONENTS.hasKey(name):
     stderr.writeLine("Component '$1' not found" % [name])
     quit(50)
@@ -105,7 +104,7 @@ for kind, key, val in getopt():
           echo VERSION
           quit(0)
         of "help", "h":
-          echo help
+          echo HELP
           quit(0)
         of "log", "l":
           case val:
@@ -125,27 +124,3 @@ for kind, key, val in getopt():
           discard
     else:
       discard
-
-case OPTIONS.command:
-  of "run":
-    if OPTIONS.arguments.len == 0:
-      stderr.writeLine("No file specified")
-      quit(100)
-    runGraph(OPTIONS.arguments[0])
-  of "info":
-    if OPTIONS.arguments.len == 0:
-      stderr.writeLine("No file specified")
-      quit(101)
-    infoGraph(OPTIONS.arguments[0])
-  of "describe":
-    if OPTIONS.arguments.len == 0:
-      echo "Components:"
-      for c in COMPONENTS.keys:
-        echo "- ", c
-    else:
-      describeComponent(OPTIONS.arguments[0])
-  else:
-    echo help
-quit(0)
-
-
