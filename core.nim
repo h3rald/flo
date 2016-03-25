@@ -347,6 +347,7 @@ macro copyNimProc*(name: expr, sendpkt: bool, portdata: varargs[expr]): stmt =
     args[j] = "p[\"$1\"].receive().contents.$2" % [$portdata[j*2], kind2getter($portdata[j*2+1])]
     ports[j] = ".inport(\"$1\")" % [$portdata[j*2]]
   if sendpkt.boolVal:
+    ports.add(".outport(P_OUT)")
     exec = """if p["OUT"].isAttached:
         try: 
           p["OUT"].send(%($name($args)))
@@ -389,6 +390,7 @@ macro copyNimIterator*(name: expr, portdata: varargs[expr]): stmt =
         except:
           if p["ERR"].isAttached:
             p["ERR"].send(%getCurrentExceptionMsg())""" % ["name", $name, "args", args.join(", ")]
+  ports.add(".outport(P_OUT)")
   let code = """
   define("$name")
     $ports
