@@ -1,0 +1,42 @@
+{
+  "processes":{
+    "getFiles": {
+      "component": "os.walkDirRec"
+    },
+    "print": {
+      "component": "sys.writer"
+    },
+    "err": {
+      "component": "sys.writer"
+    }
+  },
+  "connections": [
+    {
+      "data": ".",
+      "tgt": {
+        "process": "getFiles",
+        "port": "IN"
+      }
+    },
+    {
+      "src": {
+        "process": "getFiles",
+        "port": "OUT"
+      },
+      "tgt": {
+        "process": "print",
+        "port": "IN"
+      }
+    },
+    {
+      "src": {
+        "process": "getFiles",
+        "port": "ERR"
+      },
+      "tgt": {
+        "process": "err",
+        "port": "IN"
+      }
+    }
+  ]
+}

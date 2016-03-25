@@ -48,6 +48,7 @@ type
     ports*: CritBitTree[Port]
     status*: ProcessStatus
     options*: ProcessOptions
+    idleSince*: float
   Connection* = ref object
     id*: string
     size*: int
@@ -69,7 +70,8 @@ type
 
 var
   CONNECTION_QUEUE_SIZE* = 8
-  TICK* = 10
+  PROCESS_TIMEOUT* = 1000 
+  TICK* = 0
   QUEUES*: CritBitTree[Queue[Packet]]
   COMPONENTS*: CritBitTree[Component]
   NS* = "flo"

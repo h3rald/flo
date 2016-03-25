@@ -4,6 +4,8 @@ import
   types,
   cli
 
+LOG.level = OPTIONS.logLevel
+
 case OPTIONS.command:
   of "run":
     if OPTIONS.arguments.len == 0:

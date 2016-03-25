@@ -27,6 +27,7 @@ let
   Options:
     -h, --help            Display this message.
     -l, --log             Specify the log level: debug, info, warn, error, none (default: warn)
+    -t, --tick            Specify process tick frequency in milliseconds (default: 0)
     -v, --version         Display the program version.""" % [VERSION]
 
 proc loadFile*(file: string): Graph =
@@ -106,6 +107,8 @@ for kind, key, val in getopt():
         of "help", "h":
           echo HELP
           quit(0)
+        of "tick", "t":
+          TICK = val.parseInt
         of "log", "l":
           case val:
             of "warn":

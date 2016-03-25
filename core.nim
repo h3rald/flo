@@ -6,7 +6,8 @@ import
   critbits,
   json,
   logger,
-  macros
+  macros, 
+  times
 import
   types
 
@@ -105,7 +106,7 @@ proc `@`*(name: string): Component =
 
 proc process*(name: string, comp: Component): Process =
   ## Creates a new Process.
-  result = Process(name: name, component: comp, status: INITIALIZED, options: ProcessOptions(listen: false, logLevel: lvWarn))
+  result = Process(name: name, component: comp, status: INITIALIZED, idleSince: 0, options: ProcessOptions(listen: false, logLevel: lvWarn))
   for p in comp.ports.values:
     result.ports[p.name] = Port(name: p.name, component: p.component, direction: p.direction, process: result)
 
@@ -206,6 +207,7 @@ proc claimByType*(p: Process, port: string, kind: JsonNodeKind): bool =
 
 proc send*(outport: Port, packet: Packet) =
   discard outport.requireOutPort().requireAttachedPort()
+  LOG.debug(outport.process.name & "." & outport.name & " -> " & $packet & " [" & $QUEUES[outport.connection.id].len & "]")
   outport.connection.enqueue(packet)
 
 proc send*(outport: Port, contents: JsonNode) =
@@ -213,7 +215,9 @@ proc send*(outport: Port, contents: JsonNode) =
 
 proc receive*(inport: Port): Packet {.discardable.}= 
   discard inport.requireInPort().requireAttachedPort()
-  return inport.connection.dequeue()
+  result = inport.connection.dequeue()
+  # If queue is empty, disconnect processes
+  LOG.debug(inport.process.name & "." & inport.name & " <- " & $result & " [" & $QUEUES[inport.connection.id].len & "]")
 
 proc error*(p: Process, message: string, params: varargs[string, `$`]) = 
   LOG.error(message, params)
@@ -268,6 +272,12 @@ proc define*(name: string): Component {.discardable.} =
   result = component(fullname)
   COMPONENTS[fullname] = result
 
+proc outports(p: Process): seq[Port] =
+  result = newSeq[Port](0)
+  for port in p.ports.values:
+    if port.direction == OUT:
+      result.add port
+
 proc run(p: Process) =
   for pr in p.component.initProcs:
     pr(p)
@@ -287,12 +297,15 @@ proc run(p: Process) =
         else:
           p.status = IDLE
       of IDLE: 
+        if p.idleSince == 0:
+          p.idleSince = epochTime()
         if p.ready():
+          p.idleSince = 0
           p.status = READY
-        if not p.options.listen:
+        if not p.options.listen and p.idleSince > 0 and (epochTime()-p.idleSince) > PROCESS_TIMEOUT/1000:
           p.status = STOPPED
-      else:
-        break
+      of STOPPED:
+          break
     LOG.debug("$1: $2" % [$p, $p.status])
     sleep(TICK)
 
@@ -390,8 +403,6 @@ macro copyNimIterator*(name: expr, portdata: varargs[expr]): stmt =
 
 
 when isMainModule:
-  import
-    times
 
   var c = component("Consumer")
     .ready do (p: Process) -> bool:
